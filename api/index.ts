@@ -1,15 +1,11 @@
-import { handle } from "hono/vercel";
+import { getRequestListener } from "@hono/node-server";
 import { buildApp } from "../src/app.js";
 
-// Vercel serverless entry. The `vercel.json` rewrite sends every /api/* and /health
-// request here, and Hono's internal router handles path dispatch from there.
+// Vercel serverless entry. `hono/vercel` targets the Edge / Next.js App Router
+// runtime (Web Request/Response). Vercel's classic Node runtime — which we need
+// because argon2 ships a native addon — passes Node.js IncomingMessage objects,
+// so we use @hono/node-server's request listener bridge instead.
 export const runtime = "nodejs";
 
 const app = buildApp();
-const handler = handle(app);
-export default handler;
-export const GET = handler;
-export const POST = handler;
-export const PATCH = handler;
-export const DELETE = handler;
-export const OPTIONS = handler;
+export default getRequestListener(app.fetch);
