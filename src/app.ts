@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import { getRequestListener } from "@hono/node-server";
 import { authRoutes } from "./routes/auth.js";
 import { vaultRoutes } from "./routes/vault.js";
 import { accountRoutes } from "./routes/account.js";
@@ -50,3 +51,11 @@ export function buildApp() {
 
   return app;
 }
+
+// Default export: a Vercel-compatible Node request listener. Exporting this here
+// (in addition to the real serverless entry at api/index.ts) guards against a
+// build/cache quirk where Vercel's function resolver occasionally loads
+// src/app.js instead of api/index.js. Both files now produce the same handler,
+// so the behaviour is identical regardless of which entry the runtime picks.
+export default getRequestListener(buildApp().fetch);
+
