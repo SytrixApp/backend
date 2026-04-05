@@ -25,6 +25,14 @@ export function buildApp() {
     }),
   );
 
+  app.get("/", (c) =>
+    c.json({
+      name: "sytrix-backend",
+      version: "0.1.0",
+      docs: "https://github.com/SytrixApp/backend",
+    }),
+  );
+
   app.route("/health", healthRoutes);
 
   // Global coarse limiter on the /api/v1 surface.
