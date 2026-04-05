@@ -17,7 +17,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "vercel-build": "pnpm build"
+    "vercel-build": "echo 'Vercel handles api/ compilation; skipping local build.'"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
