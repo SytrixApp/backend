@@ -74,7 +74,7 @@ export const authRoutes = new Hono<{ Variables: AuthVariables }>();
 
 authRoutes.post(
   "/register",
-  rateLimit({ name: "register", limit: 5, windowSec: 3600, key: clientIp }),
+  rateLimit({ name: "register", limit: 30, windowSec: 3600, key: clientIp }),
   zValidator("json", RegisterBody),
   async (c) => {
     const body = c.req.valid("json");
