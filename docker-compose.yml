@@ -19,12 +19,9 @@ services:
   backend:
     build: .
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgres://postgres:postgres@db:5432/sytrix
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-dev-secret-change-me-32ch}
       NODE_ENV: production
       PORT: 3000
     ports:
