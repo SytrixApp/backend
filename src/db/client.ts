@@ -10,6 +10,7 @@ const env = loadEnv();
 const client = postgres(env.DATABASE_URL, {
   prepare: false,
   max: env.NODE_ENV === "production" ? 10 : 5,
+  connect_timeout: 10, // fail fast instead of hanging for postgres-js default 30s
 });
 
 export const db = drizzle(client, { schema, casing: "snake_case" });
