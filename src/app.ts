@@ -16,10 +16,36 @@ export function buildApp() {
 
   if (env.NODE_ENV !== "test") app.use("*", logger());
 
+  // Security headers — applied to every response.
+  app.use("*", async (c, next) => {
+    await next();
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("X-Frame-Options", "DENY");
+    c.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    // Prevent browsers from caching sensitive API responses.
+    c.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    c.header("Pragma", "no-cache");
+    if (env.NODE_ENV === "production") {
+      c.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+    }
+  });
+
+  // CORS — origin allowlist from ALLOWED_ORIGINS env var (comma-separated).
+  // Falls back to localhost only in development, and rejects all cross-origin
+  // requests in production when ALLOWED_ORIGINS is not set.
+  const allowedOrigins: string[] = env.ALLOWED_ORIGINS
+    ? env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+    : env.NODE_ENV === "production"
+      ? [] // no cross-origin requests in production without explicit config
+      : ["http://localhost:3000", "http://localhost:5173"];
+
   app.use(
     "*",
     cors({
-      origin: "*", // tighten per deployment; configurable via env later
+      origin: (origin) => {
+        if (!origin) return origin; // same-origin requests (no Origin header)
+        return allowedOrigins.includes(origin) ? origin : null;
+      },
       allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
       allowHeaders: ["Authorization", "Content-Type"],
       maxAge: 86400,
@@ -29,8 +55,8 @@ export function buildApp() {
   app.get("/", (c) =>
     c.json({
       name: "sytrix-backend",
-      version: "0.1.0",
-      docs: "https://github.com/SytrixApp/backend",
+      // Version omitted in production to avoid fingerprinting.
+      ...(env.NODE_ENV !== "production" ? { version: "0.1.0" } : {}),
     }),
   );
 

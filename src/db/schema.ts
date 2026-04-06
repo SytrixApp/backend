@@ -94,6 +94,9 @@ export const vaultItems = pgTable(
   (t) => [
     index("vault_items_user_updated_idx").on(t.userId, t.updatedAt),
     index("vault_items_user_deleted_idx").on(t.userId, t.deletedAt),
+    // Enforce AES-GCM nonce uniqueness per user at DB level.
+    // Nonce reuse with the same key breaks AES-GCM confidentiality completely.
+    uniqueIndex("vault_items_user_nonce_unique").on(t.userId, t.nonce),
   ],
 );
 

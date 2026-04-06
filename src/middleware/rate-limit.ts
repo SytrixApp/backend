@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import type { Context } from "hono";
 import { db } from "../db/client.js";
 import { rateLimited } from "../lib/errors.js";
+import { loadEnv } from "../env.js";
 
 export type RateLimitOptions = {
   /** Logical name of the bucket (e.g. "login", "register"). Combined with the key into the row id. */
@@ -44,7 +45,7 @@ async function bumpAndCheck(name: string, keyValue: string, limit: number, windo
   `);
   const count = Number(row?.count ?? 0);
   if (count > limit) {
-    throw rateLimited(`Rate limit exceeded for ${name}`);
+    throw rateLimited("Too many requests");
   }
 }
 
@@ -67,11 +68,20 @@ export async function checkRateLimit(opts: {
   await bumpAndCheck(opts.name, opts.keyValue, opts.limit, opts.windowSec);
 }
 
-/** Best-effort client IP. Falls back to a placeholder so the limiter still functions. */
+/** Best-effort client IP. Falls back to a placeholder so the limiter still functions.
+ *
+ * Only trusts X-Forwarded-For / X-Real-IP when TRUST_PROXY=true. Without an explicit
+ * opt-in, those headers are user-controlled and trivially forged, allowing rate-limit
+ * bypass. Set TRUST_PROXY=true only when the server sits behind a known trusted proxy
+ * (e.g. nginx, Vercel edge, Cloudflare) that sets these headers authoritatively.
+ */
 export function clientIp(c: Context): string {
-  const xff = c.req.header("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim();
-  const real = c.req.header("x-real-ip");
-  if (real) return real.trim();
+  const env = loadEnv();
+  if (env.TRUST_PROXY === "true") {
+    const xff = c.req.header("x-forwarded-for");
+    if (xff) return xff.split(",")[0]!.trim();
+    const real = c.req.header("x-real-ip");
+    if (real) return real.trim();
+  }
   return "unknown";
 }

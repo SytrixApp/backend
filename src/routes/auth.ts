@@ -121,7 +121,7 @@ authRoutes.post(
 
 authRoutes.post(
   "/refresh",
-  rateLimit({ name: "refresh", limit: 60, windowSec: 60, key: clientIp }),
+  rateLimit({ name: "refresh", limit: 10, windowSec: 60, key: clientIp }),
   zValidator("json", RefreshBody),
   async (c) => {
     const { refreshToken } = c.req.valid("json");
@@ -134,16 +134,26 @@ authRoutes.post(
   },
 );
 
-authRoutes.post("/logout", zValidator("json", LogoutBody), async (c) => {
-  const { refreshToken } = c.req.valid("json");
-  await revokeRefreshToken(refreshToken);
-  return c.json({ ok: true });
-});
+authRoutes.post(
+  "/logout",
+  rateLimit({ name: "logout", limit: 20, windowSec: 60, key: clientIp }),
+  zValidator("json", LogoutBody),
+  async (c) => {
+    const { refreshToken } = c.req.valid("json");
+    await revokeRefreshToken(refreshToken);
+    return c.json({ ok: true });
+  },
+);
 
-authRoutes.post("/logout-all", requireAuth, async (c) => {
-  await revokeAllRefreshTokens(c.get("userId"));
-  return c.json({ ok: true });
-});
+authRoutes.post(
+  "/logout-all",
+  requireAuth,
+  rateLimit({ name: "logout-all", limit: 5, windowSec: 300, key: (c) => c.get("userId") }),
+  async (c) => {
+    await revokeAllRefreshTokens(c.get("userId"));
+    return c.json({ ok: true });
+  },
+);
 
 authRoutes.post(
   "/recover",

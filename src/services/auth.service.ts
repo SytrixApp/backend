@@ -2,7 +2,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import { eq, sql as dsql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { users, type KdfParams } from "../db/schema.js";
-import { hashPasswordHash, verifyPasswordHash, safeEqual, sha256Hex } from "../lib/crypto.js";
+import { hashPasswordHash, verifyPasswordHash, safeEqual, sha256Hex, hmacSha256Hex } from "../lib/crypto.js";
 import { badRequest, conflict, unauthorized } from "../lib/errors.js";
 import {
   issueAccessToken,
@@ -13,6 +13,17 @@ import {
 import { loadEnv } from "../env.js";
 
 const env = loadEnv();
+
+// Server-side HMAC secret for recovery code hashing.
+// Falls back to JWT_SECRET so existing deployments work without a new env var.
+// Setting RECOVERY_HMAC_SECRET to a distinct value is strongly recommended.
+function recoveryHmacSecret(): string {
+  return env.RECOVERY_HMAC_SECRET ?? env.JWT_SECRET;
+}
+
+function hashRecoveryCode(code: string): string {
+  return hmacSha256Hex(recoveryHmacSecret(), code);
+}
 
 export type RegisterInput = {
   email: string;
@@ -45,7 +56,7 @@ export async function register(input: RegisterInput): Promise<{ userId: string }
       kdfParams: input.kdfParams,
       encryptedDataKey: input.encryptedDataKey,
       encryptedDataKeyRecovery: input.encryptedDataKeyRecovery,
-      recoveryCodeHash: sha256Hex(input.recoveryCode),
+      recoveryCodeHash: hashRecoveryCode(input.recoveryCode),
     })
     .returning({ id: users.id });
 
@@ -62,16 +73,22 @@ export async function register(input: RegisterInput): Promise<{ userId: string }
  */
 export async function prelogin(emailRaw: string): Promise<{ kdfSalt: Buffer; kdfParams: KdfParams }> {
   const email = emailRaw.trim().toLowerCase();
+
+  // Always compute the fake salt BEFORE the DB query so both code paths
+  // (email found vs. not found) perform the same amount of work, keeping
+  // response timing constant and preventing account enumeration via timing.
+  const fakeSalt = Buffer.from(
+    createHmac("sha256", env.JWT_SECRET).update(`prelogin-salt:${email}`).digest().subarray(0, 16),
+  );
+  const fakeParams: KdfParams = { algo: "argon2id", iterations: 3, memory: 65536, parallelism: 1 };
+
   const [user] = await db
     .select({ kdfSalt: users.kdfSalt, kdfParams: users.kdfParams })
     .from(users)
     .where(dsql`lower(${users.email}) = ${email}`)
     .limit(1);
-  if (user) return { kdfSalt: user.kdfSalt, kdfParams: user.kdfParams };
 
-  // Deterministic fake based on HMAC(email, JWT_SECRET).
-  const fakeSalt = createHmac("sha256", env.JWT_SECRET).update(`prelogin-salt:${email}`).digest().subarray(0, 16);
-  const fakeParams: KdfParams = { algo: "argon2id", iterations: 3, memory: 65536, parallelism: 1 };
+  if (user) return { kdfSalt: user.kdfSalt, kdfParams: user.kdfParams };
   return { kdfSalt: fakeSalt, kdfParams: fakeParams };
 }
 
@@ -141,10 +158,12 @@ export async function recover(input: RecoverInput): Promise<{ userId: string }> 
     .from(users)
     .where(dsql`lower(${users.email}) = ${email}`)
     .limit(1);
-  if (!user) throw unauthorized("Invalid email or recovery code");
 
-  const presentedHash = sha256Hex(input.recoveryCode);
-  if (!safeEqual(presentedHash, user.recoveryCodeHash)) {
+  // Compute the presented hash before the early return so timing is uniform
+  // whether or not the email exists (prevents account enumeration via timing).
+  const presentedHash = hashRecoveryCode(input.recoveryCode);
+
+  if (!user || !safeEqual(presentedHash, user.recoveryCodeHash)) {
     throw unauthorized("Invalid email or recovery code");
   }
 
@@ -158,7 +177,7 @@ export async function recover(input: RecoverInput): Promise<{ userId: string }> 
       kdfParams: input.newKdfParams,
       encryptedDataKey: input.newEncryptedDataKey,
       encryptedDataKeyRecovery: input.newEncryptedDataKeyRecovery,
-      recoveryCodeHash: sha256Hex(input.newRecoveryCode),
+      recoveryCodeHash: hashRecoveryCode(input.newRecoveryCode),
       updatedAt: new Date(),
     })
     .where(eq(users.id, user.id));
