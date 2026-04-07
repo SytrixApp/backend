@@ -34,10 +34,14 @@ export function buildApp() {
   // Falls back to localhost only in development, and rejects all cross-origin
   // requests in production when ALLOWED_ORIGINS is not set.
   const allowedOrigins: string[] = env.ALLOWED_ORIGINS
-    ? env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
-    : env.NODE_ENV === "production"
-      ? [] // no cross-origin requests in production without explicit config
-      : ["http://localhost:3000", "http://localhost:5173"];
+  ? env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+  : env.NODE_ENV === "production"
+    ? [] // en prod, rien sans config
+    : [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "chrome-extension://ajhkdgdpioiimaabkoaafmegdkaokmco", // ton extension
+      ];
 
   app.use(
     "*",
